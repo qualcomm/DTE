@@ -592,7 +592,12 @@ class DTOperationEditPropVal(DTOperation):
             for val in self.val_new:
                 #dtlogger.debug(type(val))
                 if isinstance(val,type('')):
-                   vals.append(int(val))
+                   # int(val, 0) auto-detects the base from a literal
+                   # prefix ('0x' hex, '0o' octal, '0b' binary, else
+                   # decimal).  Plain int(val) only accepts decimal and
+                   # rejects '0x...' tokens that callers naturally
+                   # supply when mirroring fdtdump output.
+                   vals.append(int(val, 0))
                 else:
                    vals.append(val)
             #dtlogger.debug("new list is %s"%vals)
@@ -1006,7 +1011,18 @@ class DTWrapper:
     def _update_dtb(self):
         self.dtb_mappings = {}
         if self._fdt is not None:
-            self.dtb = self._fdt.to_dtb(self.dtb_mappings)
+            # Upstream PyPI pyfdt (0.3, the only released version) exposes
+            # `to_dtb(self)` with no parameters.  QDTE was developed against
+            # an internal fork whose `to_dtb()` accepts an out-dict that gets
+            # populated with byte-offset mappings for the GUI hex viewer.
+            # Probe both signatures so we work with either: pass the
+            # mappings dict if accepted, otherwise call the zero-arg form
+            # and leave `dtb_mappings` empty (the hex viewer simply will
+            # not highlight node offsets in that case).
+            try:
+                self.dtb = self._fdt.to_dtb(self.dtb_mappings)
+            except TypeError:
+                self.dtb = self._fdt.to_dtb()
         else:
             self.dtb = None
 

@@ -66,16 +66,32 @@ from pyfdt import pyfdt
 import Autocmd as cmd
 
 #nhlos parser lib
-import non_hlos_parser
+#
+# The NON-HLOS.bin parser is only used by the GUI's FAT image browser
+# (DTGUIController instantiated via the `else` branch in run()).  Its
+# transitive deps (`fs`, `pyfatfs`) are unnecessary for headless
+# --nogui usage such as xbl_config.elf modification, so import lazily
+# and fall back to a stub when those packages are not installed.  The
+# stub satisfies the DTGUIController class-definition contract without
+# ever being instantiated under --nogui.
+try:
+    import non_hlos_parser
+except ImportError:
+    class non_hlos_parser:  # type: ignore
+        class nhlos_Operator:
+            pass
 
 import get_qsahara_files
 
 
 QUTS_STATE = None
 quts_path = None
+# The "quts2" key is only present in the Windows branch of
+# flags.py:global_info (see the platform check there).  Guard the
+# lookup so the Linux startup path does not raise KeyError.
 if os.path.exists(gl_info["quts"]):
     quts_path = gl_info["quts"]
-elif os.path.exists(gl_info["quts2"]):
+elif "quts2" in gl_info and os.path.exists(gl_info["quts2"]):
     quts_path = gl_info["quts2"]
 if quts_path and os.path.exists(os.path.join(quts_path,'Common','ttypes.py'))\
     and os.path.exists(os.path.join(quts_path,'ImageManagementService','ImageManagementService.py'))\
@@ -1696,7 +1712,11 @@ def run(root, **kwargs):
             return """
     else:
         import ctypes
-        ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
+        # ctypes.windll exists only on Windows; this call hides the console
+        # window behind the GUI there.  Guard it so the GUI also launches on
+        # Linux/macOS, where windll is absent (AttributeError otherwise).
+        if hasattr(ctypes, "windll"):
+            ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
         DTGUIController(root, **kwargs)
         # start processing events
 
